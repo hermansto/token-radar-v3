@@ -1,5 +1,4 @@
-/* Token Radar v3 — dark, calm, one accent. Palette, radii and type are the
-   whole style; everything else is spacing, a hairline and a type step. */
+/* Token Radar v5 — dark, calm, one accent. */
 :root {
   --canvas: #0e1210;
   --surface: #161c18;
@@ -52,6 +51,9 @@ a { color: var(--accent); }
 .fact span { color: var(--muted); font-size: 13px; }
 
 .tabs { display: flex; gap: var(--s1); padding: 3px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface); width: max-content; max-width: 100%; flex-wrap: wrap; }
+
+.strip { border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--surface); padding: var(--s3) var(--s4); color: var(--muted); font-size: 13px; margin-bottom: var(--s4); line-height: 1.6; }
+.strip b { color: var(--ink); font-weight: 600; }
 .tabs button { min-height: 32px; padding: 0 var(--s4); border: 0; border-radius: 6px; background: transparent; color: var(--muted); }
 .tabs button[aria-pressed="true"] { background: var(--accent); color: #08130d; font-weight: 650; }
 .controls { display: flex; flex-wrap: wrap; align-items: end; gap: var(--s3); padding: var(--s4) 0; }
@@ -90,6 +92,10 @@ td.name .wl {
 }
 .pill.src-category { color: var(--accent); border-color: var(--accent-dim); }
 .pill.src-shrunk { color: var(--ink); }
+.pill.verdict-FARM { color: var(--accent); border-color: var(--accent-dim); font-weight: 600; }
+.pill.verdict-SKIP { color: var(--negative); border-color: #5c2b24; }
+.flag { color: var(--negative); }
+.flag-mark { color: var(--negative); margin-left: var(--s2); font-size: 12px; }
 .rank { font-family: var(--font-num); color: var(--muted); }
 .rank.top3 { color: var(--accent); font-weight: 700; }
 .pill { display: inline-block; padding: 1px var(--s2); border: 1px solid var(--border); border-radius: 20px; font-size: 12px; color: var(--muted); white-space: nowrap; }
@@ -97,30 +103,30 @@ td.name .wl {
 .empty { padding: var(--s6); color: var(--muted); text-align: center; }
 
 .detail { margin-top: var(--s5); }
-.detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--s4); padding: var(--s4) var(--s5); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--s4); padding: var(--s3) var(--s5); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .detail-head h2 { font-size: 24px; }
 .detail-head .sub { color: var(--muted); font-size: 13px; margin-top: var(--s1); }
 .detail-head .close { border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius-control); padding: var(--s2) var(--s3); color: var(--muted); }
-.detail-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s4); padding: var(--s5); border-bottom: 1px solid var(--border); }
+.detail-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s4); padding: var(--s4) var(--s5); border-bottom: 1px solid var(--border); }
 .stat b { display: block; font-family: var(--font-num); font-size: 18px; font-weight: 600; }
 .stat span { color: var(--muted); font-size: 12px; }
-.math { padding: var(--s4) var(--s5); border-bottom: 1px solid var(--border); }
-/* Valuation left, farm plan right at desktop width, so the whole detail
-   fits one 1440×900 frame; one column again on narrow screens. */
+.math { padding: var(--s3) var(--s5); border-bottom: 1px solid var(--border); }
+
 .detail-body { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); }
 .detail-body .math { border-bottom: 0; border-right: 1px solid var(--border); }
 .detail-body .farm { border-bottom: 0; }
 .math h3, .farm h3 { margin-bottom: var(--s3); }
 .math table { font-size: 14px; }
-.math td, .math th { padding: var(--s2) 0; border-bottom: 1px solid var(--border); }
+.math td, .math th { padding: 6px 0; border-bottom: 1px solid var(--border); }
 .math tr:last-child td { border-bottom: 0; font-weight: 650; }
 .math td.num { font-family: var(--font-num); }
 .math .formula { font-family: var(--font-num); font-size: 13px; color: var(--muted); padding-left: var(--s4); }
-.farm { padding: var(--s4) var(--s5); }
-.farm ol { margin: 0; padding-left: 20px; display: grid; gap: var(--s3); }
+.farm { padding: var(--s3) var(--s5); }
+.farm-totals { color: var(--muted); font-size: 13px; font-family: var(--font-num); margin-bottom: var(--s3); }
+.farm ol { margin: 0; padding-left: 20px; display: grid; gap: var(--s2); }
 .farm li { padding-left: var(--s2); }
 .farm li::marker { color: var(--accent); font-weight: 700; font-family: var(--font-num); }
-.note { padding: 0 var(--s5) var(--s5); color: var(--muted); font-size: 13px; }
+.note { padding: 0 var(--s5) var(--s4); color: var(--muted); font-size: 13px; }
 
 .section { margin-top: var(--s6); }
 .section h2 { margin-bottom: var(--s2); }
