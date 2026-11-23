@@ -1,9 +1,10 @@
-// Token Radar v5 — static dashboard. Reads window.RADAR and renders the
+// Token Radar v6 — static dashboard. Reads window.RADAR and renders the
 // ranked board, a filterable table, a per-protocol detail view, the
 // live-token view, and the model with its fit, odds and comparables. No
 // network: every byte it shows is in data.js. State lives in the URL hash.
-// v5 ranks by EXPECTED value (implied x launch odds). The detail view
-// recomputes the valuation from the raw figures, the same arithmetic
+// v6 ranks by IMPLIED value. Expected value (implied x launch odds) is
+// a column, not the rank order; it drives the farm verdicts. The detail
+// view recomputes the valuation from the raw figures, the same arithmetic
 // lib/model.ts runs, so it reproduces board.json to the dollar.
 (function () {
   'use strict';
@@ -153,8 +154,8 @@
         el('span', { html: 'Floor <b>' + fmtUsd(DATA.floor_usd) + '</b>' }))));
     shell.appendChild(el('div', { class: 'lede' },
       el('div', {},
-        el('h1', { text: 'Pre-token protocols, ranked by expected value' }),
-        el('p', { html: 'Every protocol on this board <strong>records no token yet</strong>. ' +
+        el('h1', { text: 'Pre-token protocols, ranked by implied value' }),
+        el('p', { html: 'Every protocol on this board <strong>records no token yet</strong>. Ranks follow implied value. ' +
           'Expected value is the implied value times the chance it ever launches a token. Implied value comes from the snapshot itself: TVL times a category multiple from ' +
           'live-token comparables, adjusted for 7-day growth, chain breadth and a fitted scale term. ' +
           'The launch odds come from the peers\u2019 own record. Click any row for the full maths and its farm plan.' })),
@@ -163,7 +164,7 @@
         el('div', { class: 'fact' }, el('span', { text: 'Watchlist covered' }), el('b', { text: DATA.watchlist_size + ' of ' + DATA.watchlist_size })),
         el('div', { class: 'fact' }, el('span', { text: 'Early rows' }), el('b', { text: String(DATA.early_size) })),
         el('div', { class: 'fact' }, el('span', { text: 'Live tokens set aside' }), el('b', { text: DATA.live_size + ' shown apart' })),
-        el('div', { class: 'fact' }, el('span', { text: 'Top expected value' }), el('b', { text: rows.length ? fmtUsd(rows[0].expected_value_usd) : 'n/a' })))));
+        el('div', { class: 'fact' }, el('span', { text: 'Top implied value' }), el('b', { text: rows.length ? fmtUsd(rows[0].implied_value_usd) : 'n/a' })))));
 
     // Integrity strip: what was excluded, what falls back, what was checked.
     var globalCount = comps.filter(function (c) { return c.source === 'global'; }).length;
@@ -326,7 +327,7 @@
       ['× scale (TVL ' + fmtUsd(r.tvl_usd) + ')', '× ' + fmtMult(scaleMult), 'exp(−0.36 × clamp(log(TVL/$50M), −2, 4)) — fitted'],
       ['= implied value', fmtFull(r.implied_value_usd), 'Rounded to the dollar, at least $1'],
       ['× launch odds (' + fmtAge(r.age_days) + ' with no token)', '× ' + fmtOdds(r.odds), 'Conditional chance from the age-bucket survival curve'],
-      ['= expected value', fmtFull(r.expected_value_usd), 'The ranked value: implied × odds'],
+      ['= expected value', fmtFull(r.expected_value_usd), 'Implied × odds'],
       ['Page recomputation', fmtFull(recomputedExpected), recomputedExpected === r.expected_value_usd ? 'Matches the expected value board.json carries.' : 'Does not match board.json — report this.'],
     ];
     rowsHtml.forEach(function (row) {
@@ -343,7 +344,7 @@
     (r.farm_steps || []).forEach(function (s) { ol.appendChild(el('li', { text: s })); });
     farm.appendChild(ol);
     panel.appendChild(el('div', { class: 'detail-body' }, math, farm));
-    panel.appendChild(el('p', { class: 'note', text: 'The plan is derived from this protocol\u2019s category, chains, TVL and age — not from its name. Amounts are a starting size, not a recommendation; check the protocol\u2019s own page before depositing anything.' }));
+    panel.appendChild(el('p', { class: 'note', text: 'The plan is derived from this protocol\u2019s category, chains, TVL and age — not from its name. Amounts are a starting size, not a recommendation; check the protocol\u2019s own page first.' }));
     shell.appendChild(panel);
     setTimeout(function () {
       var d = document.getElementById('detail');
@@ -353,7 +354,7 @@
 
   function renderLive(shell) {
     shell.appendChild(el('div', { class: 'section' },
-      el('h2', { text: 'Live tokens — already trading, shown apart' }),
+      el('h2', { text: 'Live tokens — already trading' }),
       el('p', { text: 'These protocols already have a token, so the board never ranks them. They are here at the market\u2019s own value — market cap, not a model.' })));
     var panel = el('div', { class: 'panel' });
     var wrap = el('div', { class: 'table-wrap' });
@@ -381,7 +382,7 @@
     wrap.appendChild(table);
     panel.appendChild(wrap);
     shell.appendChild(panel);
-    shell.appendChild(el('p', { class: 'note', text: '⚑ artefact: Rain records a $2.65B market cap on $6.6M TVL — a 400× ratio — below the $50M comparables floor. It never enters the comparables. Any Mcap / TVL over 10× here is the same kind of artefact, not a valuation.' }));
+    shell.appendChild(el('p', { class: 'note', text: '⚑ artefact: Rain records a $2.65B market cap on $6.6M TVL — a 400× ratio — below the $50M comparables floor. Any Mcap / TVL over 10× here is the same kind of artefact, not a valuation.' }));
   }
 
   function renderModel(shell) {
@@ -411,7 +412,7 @@
     // The fit, held out.
     shell.appendChild(el('div', { class: 'section' },
       el('h2', { text: 'The fit — tested held-out, twice over' }),
-      el('p', { text: 'log(mcap / TVL) was regressed on the snapshot\u2019s ' + f.live_fit_n + ' live protocols with a positive market cap, and every term was tested held-out on seven splits: one walk-forward by listing date, one random 80/20, and five cross-validation folds. The figures are the seven-split mean. The full fitted OLS is not shipped — unstable, and it loses to the minimal change on every split.' })));
+      el('p', { text: 'log(mcap / TVL) was regressed on the snapshot\u2019s ' + f.live_fit_n + ' live protocols with a positive market cap, and every term was tested held-out on seven splits: one walk-forward by listing date, one random 80/20, and five folds. Figures are the seven-split mean. The full fitted OLS is not shipped — unstable, and it loses on every split.' })));
     var fitPanel = el('div', { class: 'panel' });
     var fitWrap = el('div', { class: 'table-wrap' });
     var fitTable = el('table', {});
@@ -471,8 +472,8 @@
     var zeroCount = comps.filter(function (c) { return c.samples === 0; }).length;
     shell.appendChild(el('div', { class: 'section' },
       el('h2', { text: 'Comparables — every category\u2019s multiple' }),
-      el('p', { text: ownCount + ' categories use their own median, ' + shrunkCount + ' use the shrunk blend, and ' + globalCount + ' fall back to the global median — ' + zeroCount + ' of those have no eligible live comparables at all. ' + DATA.excluded_zero_mcap + ' live protocols with a $0 or negative market cap are excluded entirely.' }),
-      el('p', { text: '“category” means the category\u2019s own median from its live protocols at $50M+ TVL; “shrunk” means 1 or 2 samples blended toward the global median; “global” means no eligible live samples; “default” would mean no live protocols at all. Rows are ordered by sample count, most first.' })));
+      el('p', { text: ownCount + ' categories use their own median, ' + shrunkCount + ' use the shrunk blend, and ' + globalCount + ' fall back to the global median — ' + zeroCount + ' of those have no eligible live comparables at all. ' + DATA.excluded_zero_mcap + ' live protocols with a $0 or negative market cap are excluded.' }),
+      el('p', { text: '“category” means the category\u2019s own median from its live protocols at $50M+ TVL; “shrunk” means 1 or 2 samples blended toward the global median; “global” means no eligible live samples; “default” would mean no live protocols at all.' })));
     var sortedComps = comps.slice().sort(function (a, b) {
       if (b.samples !== a.samples) return b.samples - a.samples;
       if (a.category === null) return 1;
