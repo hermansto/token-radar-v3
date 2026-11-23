@@ -16,8 +16,13 @@ market's own value.
 Implied value = TVL × category multiple × growth × maturity × breadth × scale.
 
 - **Category multiple** — derived from the snapshot itself: the median
-  market-cap / TVL of that category's live-token protocols (at least 3 live
-  samples, otherwise the global live median), clamped to [0.05, 3].
+  market-cap / TVL of that category's live-token protocols with TVL at or
+  above $50M. At least 3 such samples, otherwise the multiple is shrunk
+  toward the global live median, weighted 3; with none, it takes the global
+  median outright. Clamped to [0.05, 3]. The full derivation — every
+  category's multiple, raw median, samples and source, plus the fallback
+  justifications — is in `dashboard/METHOD.md`, generated from the board
+  by `main.ts` on every run.
 - **Growth** — 7-day change clamped to ±40%, weight 0.6.
 - **Maturity** — 0.7 + min(age, 1460d) / 1460 × 0.3; older with no token is
   slightly more valuable. Unknown age counts as 0.7.

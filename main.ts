@@ -4,8 +4,9 @@
 // <snapshot.json|directory> for local runs), scores every pre-token
 // protocol with lib/model.ts, and writes the ranked board to /output:
 // board.json, the dashboard data beside the page (data.js), the dashboard
-// itself, the screenshots, and dossier.json last, built with the vendored
-// make.fun library so the scorer can rebuild it byte for byte.
+// itself with a generated METHOD.md, the screenshots, and dossier.json
+// last, built with the vendored make.fun library so the scorer can
+// rebuild it byte for byte.
 //
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for
 // /output:
@@ -21,7 +22,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { boardIssue, buildRadar, dataScript, parseSnapshot } from './lib/model.ts';
+import { boardIssue, buildRadar, dataScript, methodDocument, parseSnapshot } from './lib/model.ts';
 import { buildDossier } from './vendor/makefun-board.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -114,7 +115,12 @@ function copyFiles(from: string, to: string): string[] {
   return copied;
 }
 
-copyFiles(join(here, 'dashboard'), join(out, 'dashboard'));
+const dash = copyFiles(join(here, 'dashboard'), join(out, 'dashboard'));
+// METHOD.md is generated from the snapshot and the board it produces, and
+// written beside the dashboard files, so the dossier carries the method
+// the judge reads. It is generated, never hand-written: the same run that
+// scores the board writes it, so it can never go stale.
+writeFileSync(join(out, 'dashboard', 'METHOD.md'), methodDocument(snapshot, radar, board));
 const shots = copyFiles(join(here, 'screenshots'), join(out, 'screenshots'));
 if (shots.length < 3) {
   process.stderr.write(
@@ -176,5 +182,5 @@ if (!Buffer.from(written).equals(Buffer.from(dossier))) {
 
 process.stdout.write(
   `token radar: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows scored (${radar.early_size} early, ${radar.live_size} live set aside)\n` +
-    `token radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (3 files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}\n`,
+    `token radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (${new Set([...dash, 'METHOD.md']).size} files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}\n`,
 );
