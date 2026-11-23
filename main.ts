@@ -100,13 +100,14 @@ mkdirSync(out, { recursive: true });
 writeFileSync(join(out, 'board.json'), `${JSON.stringify({ rows: board })}\n`);
 writeFileSync(join(out, 'data.js'), dataScript(radar));
 
-/** Copy one directory's regular files into `to`, skipping names that start with a dot. */
-function copyFiles(from: string, to: string): string[] {
+/** Copy one directory's regular files into `to`, skipping names that start with a dot and any name in `skip`. */
+function copyFiles(from: string, to: string, skip: string[] = []): string[] {
   if (!existsSync(from)) return [];
   mkdirSync(to, { recursive: true });
   const copied: string[] = [];
   for (const name of readdirSync(from)) {
     if (name.startsWith('.')) continue;
+    if (skip.includes(name)) continue;
     const path = join(from, name);
     if (!statSync(path).isFile()) continue;
     copyFileSync(path, join(to, name));
@@ -115,7 +116,11 @@ function copyFiles(from: string, to: string): string[] {
   return copied;
 }
 
-const dash = copyFiles(join(here, 'dashboard'), join(out, 'dashboard'));
+// METHOD.md is generated fresh by the next line, so it is never copied:
+// copyFileSync preserves the source's mode, and the grader mounts the repo
+// read-only, so a copied METHOD.md is read-only and the generated write
+// would throw EACCES and exit 1. That exact failure rejected the v4 entry.
+const dash = copyFiles(join(here, 'dashboard'), join(out, 'dashboard'), ['METHOD.md']);
 // METHOD.md is generated from the snapshot and the board it produces, and
 // written beside the dashboard files, so the dossier carries the method
 // the judge reads. It is generated, never hand-written: the same run that
