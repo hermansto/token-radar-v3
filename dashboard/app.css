@@ -83,6 +83,13 @@ tbody tr:hover td { background: var(--surface-2); }
 tbody tr[aria-selected="true"] td { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
 td.name b { display: block; font-weight: 600; }
 td.name span { color: var(--muted); font-size: 12px; font-family: var(--font-num); }
+td.name .wl {
+  display: inline-block; margin-left: var(--s2); padding: 0 var(--s2);
+  border: 1px solid var(--accent-dim); border-radius: 20px;
+  color: var(--accent); font-size: 11px; font-weight: 600; vertical-align: 1px;
+}
+.pill.src-category { color: var(--accent); border-color: var(--accent-dim); }
+.pill.src-shrunk { color: var(--ink); }
 .rank { font-family: var(--font-num); color: var(--muted); }
 .rank.top3 { color: var(--accent); font-weight: 700; }
 .pill { display: inline-block; padding: 1px var(--s2); border: 1px solid var(--border); border-radius: 20px; font-size: 12px; color: var(--muted); white-space: nowrap; }
@@ -90,21 +97,26 @@ td.name span { color: var(--muted); font-size: 12px; font-family: var(--font-num
 .empty { padding: var(--s6); color: var(--muted); text-align: center; }
 
 .detail { margin-top: var(--s5); }
-.detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--s4); padding: var(--s5); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--s4); padding: var(--s4) var(--s5); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .detail-head h2 { font-size: 24px; }
 .detail-head .sub { color: var(--muted); font-size: 13px; margin-top: var(--s1); }
 .detail-head .close { border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius-control); padding: var(--s2) var(--s3); color: var(--muted); }
 .detail-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s4); padding: var(--s5); border-bottom: 1px solid var(--border); }
 .stat b { display: block; font-family: var(--font-num); font-size: 18px; font-weight: 600; }
 .stat span { color: var(--muted); font-size: 12px; }
-.math { padding: var(--s5); border-bottom: 1px solid var(--border); }
+.math { padding: var(--s4) var(--s5); border-bottom: 1px solid var(--border); }
+/* Valuation left, farm plan right at desktop width, so the whole detail
+   fits one 1440×900 frame; one column again on narrow screens. */
+.detail-body { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); }
+.detail-body .math { border-bottom: 0; border-right: 1px solid var(--border); }
+.detail-body .farm { border-bottom: 0; }
 .math h3, .farm h3 { margin-bottom: var(--s3); }
 .math table { font-size: 14px; }
 .math td, .math th { padding: var(--s2) 0; border-bottom: 1px solid var(--border); }
 .math tr:last-child td { border-bottom: 0; font-weight: 650; }
 .math td.num { font-family: var(--font-num); }
-.math .formula { font-family: var(--font-num); font-size: 13px; color: var(--muted); }
-.farm { padding: var(--s5); }
+.math .formula { font-family: var(--font-num); font-size: 13px; color: var(--muted); padding-left: var(--s4); }
+.farm { padding: var(--s4) var(--s5); }
 .farm ol { margin: 0; padding-left: 20px; display: grid; gap: var(--s3); }
 .farm li { padding-left: var(--s2); }
 .farm li::marker { color: var(--accent); font-weight: 700; font-family: var(--font-num); }
@@ -123,6 +135,8 @@ td.name span { color: var(--muted); font-size: 12px; font-family: var(--font-num
   .lede { grid-template-columns: 1fr; }
   .facts { border-left: 0; padding-left: 0; }
   .detail-grid, .model-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .detail-body { grid-template-columns: 1fr; }
+  .detail-body .math { border-right: 0; border-bottom: 1px solid var(--border); }
   .shell { padding: var(--s4) var(--s4) var(--s6); }
   .field input { min-width: 0; width: 100%; }
 }

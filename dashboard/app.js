@@ -142,7 +142,7 @@
         el('span', { class: 'brand-name', text: 'Token Radar · ' + DATA.model_version })),
       el('div', { class: 'top-meta' },
         el('span', { html: 'Snapshot <b>' + esc(DATA.as_of) + '</b>' }),
-        el('span', { html: 'Source <b>' + esc(DATA.source) + '</b>' }),
+        el('span', { html: 'Source <b>DefiLlama · ' + esc(DATA.as_of) + '</b>' }),
         el('span', { html: 'Floor <b>' + fmtUsd(DATA.floor_usd) + '</b>' }))));
     shell.appendChild(el('div', { class: 'lede' },
       el('div', {},
@@ -173,7 +173,7 @@
     else renderModel(shell);
 
     shell.appendChild(el('div', { class: 'foot' },
-      el('span', { text: 'Token Radar ' + DATA.model_version + ' · snapshot ' + DATA.as_of + ' · ' + DATA.source }),
+      el('span', { text: 'Token Radar ' + DATA.model_version + ' · DefiLlama · ' + DATA.as_of }),
       el('span', { text: 'Implied values are a model, not a market price. Nothing here is investment advice.' })));
   }
 
@@ -212,7 +212,7 @@
     var table = el('table', {});
     var thead = el('thead', {});
     var hr = el('tr', {});
-    [['Rank', 'rank'], ['Protocol', null], ['Category', null], ['Chains', null], ['TVL', 'tvl'], ['7d', 'growth'], ['Implied value', 'implied']].forEach(function (h) {
+    [['Rank', 'rank'], ['Protocol', null], ['Category', null], ['Source', null], ['Chains', null], ['TVL', 'tvl'], ['7d', 'growth'], ['Implied value', 'implied']].forEach(function (h) {
       var attrs = { text: h[0] };
       if (h[0] === 'TVL' || h[0] === '7d' || h[0] === 'Implied value') attrs.class = 'num sortable';
       if (h[1]) attrs.onclick = function () { state.sort = h[1]; render(); };
@@ -222,7 +222,7 @@
     table.appendChild(thead);
     var tbody = el('tbody', {});
     if (list.length === 0) {
-      tbody.appendChild(el('tr', {}, el('td', { colspan: '7', class: 'empty', text: 'No protocols match these filters.' })));
+      tbody.appendChild(el('tr', {}, el('td', { colspan: '8', class: 'empty', text: 'No protocols match these filters.' })));
     }
     list.forEach(function (r) {
       var tr = el('tr', {
@@ -230,8 +230,9 @@
         onclick: function () { state.selected = state.selected === r.slug ? null : r.slug; render(); }
       });
       tr.appendChild(el('td', { class: 'rank' + (r.rank <= 3 ? ' top3' : ''), text: '#' + r.rank }));
-      tr.appendChild(el('td', { class: 'name', html: '<b>' + esc(r.name) + '</b><span>' + esc(r.slug) + '</span>' }));
+      tr.appendChild(el('td', { class: 'name', html: '<b>' + esc(r.name) + '</b>' + (r.watchlist ? '<span class="wl">Watchlist</span>' : '') + '<span>' + esc(r.slug) + '</span>' }));
       tr.appendChild(el('td', {}, el('span', { class: 'pill', text: r.category || 'Uncategorised' })));
+      tr.appendChild(el('td', {}, el('span', { class: 'pill src-' + r.multiple_source, text: r.multiple_source })));
       tr.appendChild(el('td', { text: (r.chains || []).slice(0, 3).join(', ') + ((r.chains || []).length > 3 ? ' +' + ((r.chains || []).length - 3) : '') }));
       tr.appendChild(el('td', { class: 'num', text: fmtUsd(r.tvl_usd) }));
       var g = el('td', { class: 'num ' + pctClass(r.change_7d), text: fmtPct(r.change_7d) });
@@ -267,6 +268,13 @@
     var afterBreadth = afterMaturity * breadthMult;
     var recomputed = Math.max(1, Math.round(afterBreadth * scaleMult));
     var fmtMult = function (n) { return n.toFixed(6); };
+    var multNote = r.multiple_source === 'category'
+      ? 'Median mcap / TVL of live ' + (r.category || 'uncategorised') + ' protocols at $50M+ TVL'
+      : r.multiple_source === 'shrunk'
+      ? 'Median of live ' + (r.category || 'uncategorised') + ' protocols at $50M+ TVL, shrunk toward the global median'
+      : r.multiple_source === 'global'
+      ? 'Global live median — too few live ' + (r.category || 'uncategorised') + ' protocols at $50M+ TVL'
+      : 'Default — no live protocols at all';
     var panel = el('div', { class: 'panel detail', id: 'detail' });
     panel.appendChild(el('div', { class: 'detail-head' },
       el('div', {},
@@ -275,6 +283,7 @@
       el('button', { class: 'close', text: 'Close ×', onclick: function () { state.selected = null; render(); } })));
     var grid = el('div', { class: 'detail-grid' });
     var srcLabel = r.multiple_source === 'category' ? 'category median'
+      : r.multiple_source === 'shrunk' ? 'shrunk blend'
       : r.multiple_source === 'global' ? 'global median' : 'default';
     var sampleLabel = r.multiple_samples === 0 ? 'no live samples'
       : r.multiple_samples + ' live sample' + (r.multiple_samples === 1 ? '' : 's');
@@ -289,7 +298,7 @@
     var mt = el('table', {});
     var rowsHtml = [
       ['TVL', fmtFull(r.tvl_usd), 'Snapshot TVL'],
-      ['× category multiple (' + (r.category || 'Uncategorised') + ')', '× ' + r.category_multiple.toFixed(4), 'Median mcap / TVL of live ' + (r.category || 'uncategorised') + ' protocols, or the global median'],
+      ['× category multiple (' + (r.category || 'Uncategorised') + ')', '× ' + r.category_multiple.toFixed(4), multNote],
       ['= base value', fmtFull(Math.round(base)), 'TVL × multiple'],
       ['× growth (' + (growth > 0 ? '+' : '') + growth + '% 7d, clamped ±40%)', '× ' + fmtMult(growthMult), '1 + growth / 100 × 0.6'],
       ['= after growth', fmtFull(Math.round(afterGrowth)), ''],
@@ -308,13 +317,14 @@
         el('td', { class: 'formula', text: row[2] })));
     });
     math.appendChild(mt);
-    panel.appendChild(math);
 
     var farm = el('div', { class: 'farm' }, el('h3', { text: 'Farm plan — what to do, what it costs, how long it takes' }));
     var ol = el('ol', {});
     (r.farm_steps || []).forEach(function (s) { ol.appendChild(el('li', { text: s })); });
     farm.appendChild(ol);
-    panel.appendChild(farm);
+    // Valuation left, farm plan right at desktop width, so the whole detail
+    // fits one 1440×900 frame; a single column again on narrow screens.
+    panel.appendChild(el('div', { class: 'detail-body' }, math, farm));
     panel.appendChild(el('p', { class: 'note', text: 'The plan is derived from this protocol\u2019s category, chains, TVL and age — not from its name. Amounts are a starting size, not a recommendation; check the protocol\u2019s own page before depositing anything.' }));
     shell.appendChild(panel);
     setTimeout(function () {
@@ -356,9 +366,11 @@
     shell.appendChild(el('div', { class: 'section' },
       el('h2', { text: 'The model — derived from the snapshot, not from names' }),
       el('p', { html: 'Implied value = <strong>TVL × category multiple × growth × maturity × breadth × scale</strong>. ' +
-        'The category multiple is the median market-cap / TVL of that category\u2019s live-token protocols in this same snapshot. ' +
-        'A category needs at least 3 live samples to trust its own median; otherwise it takes the global live median (' +
-        (DATA.global_median === null ? 'n/a' : DATA.global_median.toFixed(4)) + '). No protocol name is ever special-cased.' })));
+        'The category multiple is the median market-cap / TVL of that category\u2019s live-token protocols in this same snapshot, ' +
+        'counting only protocols with TVL at or above $50M. A category needs at least 3 such samples to trust its own median; ' +
+        'with 1 or 2 the multiple is shrunk toward the global live median (' +
+        (DATA.global_median === null ? 'n/a' : DATA.global_median.toFixed(4)) + '), weighted 3; with none it takes the global median outright. ' +
+        'No protocol name is ever special-cased.' })));
     var grid = el('div', { class: 'model-grid' });
     [
       ['Growth', '7-day change clamped to ±40%, weight 0.6 — a one-week wiggle cannot double a value.'],
@@ -366,15 +378,27 @@
       ['Breadth', '1 + min(chains, 12) × 0.015. More chains, slightly more reach.'],
       ['Scale', '0.95 below $50M TVL · 1.00 from $50M · 1.05 at $250M+.'],
       ['Multiple clamp', 'Every category multiple is clamped to [0.05, 3].'],
-      ['Fallback', 'Fewer than 3 live samples → global median; no live protocols at all → 0.25.'],
+      ['Fallback', '1 or 2 samples → shrunk blend toward the global median (weight 3); no samples → global median; no live protocols at all → 0.25.'],
     ].forEach(function (c) {
       grid.appendChild(el('div', { class: 'model-card' }, el('b', { text: c[0] }), el('span', { text: c[1] })));
     });
     shell.appendChild(grid);
 
+    var ownCount = comps.filter(function (c) { return c.source === 'category'; }).length;
+    var shrunkCount = comps.filter(function (c) { return c.source === 'shrunk'; }).length;
+    var globalCount = comps.filter(function (c) { return c.source === 'global'; }).length;
+    var zeroCount = comps.filter(function (c) { return c.samples === 0; }).length;
     shell.appendChild(el('div', { class: 'section' },
       el('h2', { text: 'Comparables — every category\u2019s multiple' }),
-      el('p', { text: 'Source “category” means the category\u2019s own median from its live protocols; “global” means the category had too few live samples and takes the global live median; “default” would mean no live protocols at all.' })));
+      el('p', { text: ownCount + ' categories use their own median, ' + shrunkCount + ' use the shrunk blend, and ' + globalCount + ' fall back to the global median — ' + zeroCount + ' of those have no eligible live comparables at all.' }),
+      el('p', { text: 'Source “category” means the category\u2019s own median from its live protocols at $50M+ TVL; “shrunk” means 1 or 2 samples blended toward the global median; “global” means the category had no eligible live samples and takes the global live median; “default” would mean no live protocols at all. Rows are ordered by sample count, most first.' })));
+    // Most samples first, so the categories that stand on their own median lead.
+    var sortedComps = comps.slice().sort(function (a, b) {
+      if (b.samples !== a.samples) return b.samples - a.samples;
+      if (a.category === null) return 1;
+      if (b.category === null) return -1;
+      return a.category < b.category ? -1 : a.category > b.category ? 1 : 0;
+    });
     var panel = el('div', { class: 'panel' });
     var wrap = el('div', { class: 'table-wrap' });
     var table = el('table', {});
@@ -382,7 +406,7 @@
       el('th', { text: 'Category' }), el('th', { class: 'num', text: 'Multiple' }),
       el('th', { class: 'num', text: 'Raw median' }), el('th', { class: 'num', text: 'Live samples' }), el('th', { text: 'Source' }))));
     var tbody = el('tbody', {});
-    comps.forEach(function (c) {
+    sortedComps.forEach(function (c) {
       var tr = el('tr', {});
       tr.appendChild(el('td', { text: c.category || 'Uncategorised' }));
       tr.appendChild(el('td', { class: 'num', text: c.multiple.toFixed(4) + '×' }));
