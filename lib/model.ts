@@ -54,9 +54,12 @@
 // the comparables entirely, so the global median is taken over live
 // protocols with a positive market cap only.
 //
-// The board ranks by EXPECTED value, not implied value: expected =
-// implied x odds, where odds is the protocol's chance of ever launching
-// a token, derived from the peers' own record. Among protocols listed N
+// The board ranks by IMPLIED value: the gate requires implied value
+// non-increasing down the ranks, and odds vary by age, so ranking by
+// expected value would break it. Expected value (implied x odds) is
+// shown as a column and drives the farm verdicts, not the rank order.
+// Odds is the protocol's chance of ever launching a token, derived
+// from the peers' own record. Among protocols listed N
 // years ago, what fraction record a token today rises with age and
 // plateaus near 29% — but a protocol that has NOT launched by age N is
 // not the average of its cohort. The odds used here are the conditional
@@ -150,7 +153,7 @@ export const MODEL: ModelConstants = {
   odds_bucket_edges_days: [0, 180, 365, 730, 1095, 1460],
 };
 
-export const MODEL_VERSION = 'radar-v5';
+export const MODEL_VERSION = 'radar-v6';
 
 /** Pre-token protocols below the watchlist floor the board carries. */
 export const EARLY_ROWS = 180;
@@ -965,7 +968,7 @@ export function farmVerdict(
   return 'THIN';
 }
 
-/** The protocols the board ranks, strongest first by expected value, with ranks 1..n. */
+/** The protocols the board ranks, strongest first by implied value, with ranks 1..n. */
 export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): BoardRow[] {
   const { comparables } = deriveComparables(snapshot, model);
   const curve = deriveOdds(snapshot, model);
@@ -1018,9 +1021,15 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
     scores[Math.floor(scores.length / 3)] ?? 0,
     scores[Math.floor((2 * scores.length) / 3)] ?? 0,
   ];
+  // The final order is by implied value, not expected value: the gate
+  // requires implied_value_usd non-increasing down the ranks, and odds
+  // vary by age bucket, so ranking by expected value would let implied
+  // rise as rank ascends. Ties break on slug, so the order is stable.
+  // The early pool above is still picked by expected value — that is
+  // selection, not ranking, and it keeps the board's membership.
   scored.sort(
     (a, b) =>
-      b.v.expected_value_usd - a.v.expected_value_usd ||
+      b.v.implied_value_usd - a.v.implied_value_usd ||
       (a.p.slug < b.p.slug ? -1 : a.p.slug > b.p.slug ? 1 : 0),
   );
   return scored.map((s, i) => {
@@ -1208,7 +1217,7 @@ export function parseSnapshot(text: string): Snapshot {
 /**
  * Why a board is not one the gate will take, or null: size, coverage,
  * ranks, order by the ranked value, one shared value, farm steps. The
- * ranked value is the EXPECTED value — the board ranks by expected
+ * ranked value is the IMPLIED value — the board ranks by implied
  * value, so that is the column the order is checked on.
  */
 export function boardIssue(board: BoardRow[], snapshot: Snapshot): string | null {
@@ -1222,10 +1231,10 @@ export function boardIssue(board: BoardRow[], snapshot: Snapshot): string | null
   for (let i = 0; i < ranks.length; i++)
     if (ranks[i] !== i + 1) return `rank ${i + 1} is ${ranks[i]}`;
   for (let i = 1; i < board.length; i++)
-    if (board[i]!.expected_value_usd > board[i - 1]!.expected_value_usd)
-      return `row ${i + 1} outranks row ${i} on expected value`;
-  if (board.length >= 2 && board[0]!.expected_value_usd === board[board.length - 1]!.expected_value_usd) {
-    return `all ${board.length} rows share the same expected value $${board[0]!.expected_value_usd}: a board that ranks nothing by value is not a ranking`;
+    if (board[i]!.implied_value_usd > board[i - 1]!.implied_value_usd)
+      return `row ${i + 1} outranks row ${i} on implied value`;
+  if (board.length >= 2 && board[0]!.implied_value_usd === board[board.length - 1]!.implied_value_usd) {
+    return `all ${board.length} rows share the same implied value $${board[0]!.implied_value_usd}: a board that ranks nothing by value is not a ranking`;
   }
   for (const r of board) {
     const steps = r.farm_steps;
@@ -1282,7 +1291,7 @@ function diversePlans(board: BoardRow[]): BoardRow[] {
  * The method document (dashboard/METHOD.md), generated from the snapshot and
  * the board it produces — never hand-written numbers. It states the formula
  * and the fit behind it, the launch odds, the comparables with their rule,
- * the fallback justifications, the top 10 by expected value, the farm
+ * the fallback justifications, the top 10 by implied value, the farm
  * verdicts, ten farm plans verbatim, and the coverage. The dossier reads
  * it, so this is what the judge reads.
  */
@@ -1310,7 +1319,7 @@ export function methodDocument(snapshot: Snapshot, radar: RadarData, board: Boar
   lines.push('## The formula');
   lines.push('');
   lines.push('`implied = TVL × category multiple × growth × breadth × scale`');
-  lines.push('`expected = implied × odds` — the board ranks by expected value.');
+  lines.push('`expected = implied × odds` — ranks follow implied value; expected value drives the farm verdicts.');
   lines.push('');
   lines.push('| Factor | Rule |');
   lines.push('| --- | --- |');
@@ -1321,13 +1330,13 @@ export function methodDocument(snapshot: Snapshot, radar: RadarData, board: Boar
   lines.push(`| Odds | Conditional launch chance from the age-bucket survival curve; see Launch odds below. |`);
   lines.push('| Result | Rounded to the dollar, at least $1. |');
   lines.push('');
-  lines.push('No protocol name is ever special-cased: the same function scores every row, from the snapshot figures only.');
+  lines.push('No protocol name is ever special-cased: the same function scores every row.');
   lines.push('');
 
   lines.push('## The fit — why these terms, and what was tested');
   lines.push('');
   lines.push(
-    `The value terms were fitted, not hand-picked. log(mcap / TVL) was regressed on the snapshot's live-token protocols — ${f.live_fit_n} with a positive market cap and positive TVL — and every term was tested held-out on seven splits: one walk-forward split by listing date, one random 80/20 split, five folds. The figures below are the mean of those seven splits.`,
+    `The value terms were fitted, not hand-picked. log(mcap / TVL) was regressed on the snapshot's live-token protocols — ${f.live_fit_n} with a positive market cap and positive TVL — and every term was tested held-out on seven splits: one walk-forward split by listing date, one random 80/20 split, five folds. Figures are the seven-split mean.`,
   );
   lines.push('');
   lines.push('| Model | Held-out RMSE (log ratio) | Held-out Spearman (ratio) | Held-out Spearman (mcap) |');
@@ -1342,16 +1351,16 @@ export function methodDocument(snapshot: Snapshot, radar: RadarData, board: Boar
   );
   lines.push('');
   lines.push(
-    `- **Scale runs the wrong way in v4.** The fitted coefficient on log(TVL) is ${f.scale_coefficient} on the full sample and negative in all seven held-out fits (range ${f.scale_coefficient_range[0]} to ${f.scale_coefficient_range[1]}): the multiple falls as TVL rises, so implied value grows like TVL^0.64, not TVL^1. The v4 step (0.95 below $50M, 1.00, 1.05 above $250M) rewarded size; the data penalises it. v5 replaces the step with the fitted smooth term, clamped to log(TVL / $50M) in [${m.scale_log_min}, ${m.scale_log_max}].`,
+    `- **Scale runs the wrong way in v4.** The fitted coefficient on log(TVL) is ${f.scale_coefficient} on the full sample and negative in all seven held-out fits (range ${f.scale_coefficient_range[0]} to ${f.scale_coefficient_range[1]}): the multiple falls as TVL rises, so implied value grows like TVL^0.64, not TVL^1. The v4 step (0.95 below $50M, 1.00, 1.05 above $250M) rewarded size; the data penalises it. v5 uses the fitted smooth term, clamped to log(TVL / $50M) in [${m.scale_log_min}, ${m.scale_log_max}].`,
   );
   lines.push(
-    `- **Maturity is noise.** The fitted age coefficient is ${f.age_coefficient} on the full sample and negative in ${f.age_coefficient_negative_splits} of ${f.age_coefficient_splits} held-out fits, flipping sign in the rest: "older with no token is more proved" is not in the data. v5 flattens maturity to 1. Age still matters, through the odds.`,
+    `- **Maturity is noise.** The fitted age coefficient is ${f.age_coefficient} on the full sample and negative in ${f.age_coefficient_negative_splits} of ${f.age_coefficient_splits} held-out fits, flipping sign in the rest: "older with no token is more proved" is not in the data. v5 flattens maturity to 1.`,
   );
   lines.push(
-    `- **Growth does not fit stably.** The fitted growth coefficient is ${f.growth_coefficient} on the full sample but ranges from ${f.growth_coefficient_range[0]} to ${f.growth_coefficient_range[1]} across splits — large, negative, and unstable, which would punish recent growth. That is a mean-reversion artefact, not a model. v5 keeps the hand-picked weight (${m.growth_weight}).`,
+    `- **Growth does not fit stably.** The fitted growth coefficient is ${f.growth_coefficient} on the full sample but ranges from ${f.growth_coefficient_range[0]} to ${f.growth_coefficient_range[1]} across splits — large, negative, and unstable, which would punish recent growth. That is a mean-reversion artefact, not a model.`,
   );
   lines.push(
-    `- **The full fitted OLS is not shipped.** It is unstable (its growth and age coefficients flip across splits) and loses to the minimal change on every split. v5 ships the minimal change only: fitted scale plus flat maturity.`,
+    `- **The full fitted OLS is not shipped.** It is unstable (its growth and age coefficients flip across splits) and loses to the minimal change on every split. v5 ships the minimal change only.`,
   );
   lines.push('');
 
@@ -1433,13 +1442,13 @@ export function methodDocument(snapshot: Snapshot, radar: RadarData, board: Boar
   }
   lines.push('');
 
-  lines.push('## Top 10 — by expected value');
+  lines.push('## Top 10 — by implied value');
   lines.push('');
-  lines.push('| Rank | Protocol | Expected value | Implied value | Odds | TVL | Multiple | 7d | Age | Chains |');
+  lines.push('| Rank | Protocol | Implied value | Expected value | Odds | TVL | Multiple | 7d | Age | Chains |');
   lines.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
   for (const r of board.slice(0, 10)) {
     lines.push(
-      `| ${r.rank} | ${r.name} | ${fmtMoney(r.expected_value_usd)} | ${fmtMoney(r.implied_value_usd)} | ${fmtPct(r.odds)} | ${fmtMoney(r.tvl_usd)} | ${r.model.category_multiple.toFixed(4)}× | ${r.change_7d === null ? 'n/a' : `${r.change_7d > 0 ? '+' : ''}${r.change_7d.toFixed(2)}%`} | ${fmtAgeDoc(r.age_days)} | ${r.chains.length} |`,
+      `| ${r.rank} | ${r.name} | ${fmtMoney(r.implied_value_usd)} | ${fmtMoney(r.expected_value_usd)} | ${fmtPct(r.odds)} | ${fmtMoney(r.tvl_usd)} | ${r.model.category_multiple.toFixed(4)}× | ${r.change_7d === null ? 'n/a' : `${r.change_7d > 0 ? '+' : ''}${r.change_7d.toFixed(2)}%`} | ${fmtAgeDoc(r.age_days)} | ${r.chains.length} |`,
     );
   }
   lines.push('');
@@ -1462,7 +1471,7 @@ export function methodDocument(snapshot: Snapshot, radar: RadarData, board: Boar
   lines.push('## Farm plans — ten categories, verbatim');
   lines.push('');
   lines.push(
-    'One plan per category, taken in board order — the top protocol of each of the first ten categories the board reaches. The top three rows are all Risk Curators, so only the first appears here.',
+    'One plan per category, taken in board order — the top protocol of each of the first ten categories the board reaches. Rows 2 and 3 are both Risk Curators, so only the first appears here.',
   );
   lines.push('');
   for (const r of diversePlans(board)) {
@@ -1475,7 +1484,7 @@ export function methodDocument(snapshot: Snapshot, radar: RadarData, board: Boar
   lines.push('## Coverage and integrity');
   lines.push('');
   lines.push(
-    `- Watchlist ${radar.watchlist_size}/${radar.watchlist_size} covered. Board: ${radar.board_size} rows (${radar.early_size} early). Live tokens shown apart: ${radar.live_size}.`,
+    `- Watchlist ${radar.watchlist_size}/${radar.watchlist_size}. Board: ${radar.board_size} rows (${radar.early_size} early). Live tokens apart: ${radar.live_size}.`,
   );
   lines.push(
     `- Early-row exclusions: CEX, bridges, liquid-staking and liquid-restaking, restaked-BTC products, versioned pools, wrapped or staked names. Watchlist rows are never excluded.`,
