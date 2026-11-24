@@ -1,12 +1,12 @@
-// Token Radar v6 — the entrypoint. Stock Node 22, no dependencies.
+// Token Radar v7 — the entrypoint. Stock Node 22, no dependencies.
 //
-// Feed it the sealed snapshot (/input/snapshot.json on the grader, or
-// --input <file|directory> by hand) and it scores every pre-token
-// protocol through lib/model.ts, then lays the result out in /output
-// (or MAKEFUN_OUTPUT_DIR outside the grader): board.json, the dashboard
-// data, the dashboard itself with a freshly generated METHOD.md, the
-// screenshots, and dossier.json last, built with the vendored make.fun
-// library so the scorer can rebuild it byte for byte.
+// Give it the sealed snapshot — /input/snapshot.json on the grader, or
+// --input <file|directory> when run by hand — and it scores every
+// pre-token protocol through lib/model.ts, then writes the result to
+// /output (or MAKEFUN_OUTPUT_DIR outside the grader): board.json, the
+// dashboard data, the dashboard itself with a freshly generated
+// METHOD.md, the screenshots, and dossier.json last, built with the
+// vendored make.fun library so the scorer can rebuild it byte for byte.
 //
 // A run is deterministic — no clocks, no randomness, fixed key order —
 // so two runs write identical bytes. The output directory is created
@@ -34,28 +34,29 @@ const SHOT_CAPS = { max: 4, max_bytes: 524_288 };
 const SHOT_NAME = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
 
 /** A `--name value` or `--name=value` flag, or the fallback when absent. */
-function opt(name: string, fallback: string): string {
+function option(name: string, fallback: string): string {
   const i = process.argv.indexOf(`--${name}`);
   if (i >= 0 && i + 1 < process.argv.length) return process.argv[i + 1]!;
   const eq = process.argv.find((a) => a.startsWith(`--${name}=`));
   return eq === undefined ? fallback : eq.slice(name.length + 3);
 }
 
-const inputGiven = opt('input', '/input');
+const inputGiven = option('input', '/input');
 const snapshotFile = inputGiven.endsWith('.json') ? inputGiven : join(inputGiven, 'snapshot.json');
-const outputDir = opt('output', process.env.MAKEFUN_OUTPUT_DIR ?? '/output');
+const outputDir = option('output', process.env.MAKEFUN_OUTPUT_DIR ?? '/output');
 
 /**
- * Dimensions from an image's own header, or null for bytes this reader
- * cannot measure. PNG carries its size in the IHDR chunk; JPEG carries
- * it in the first frame header (SOF0/SOF2) found while walking markers.
+ * Width and height from an image's own header, or null for bytes this
+ * reader cannot measure. PNG carries its size in the IHDR chunk; JPEG
+ * carries it in the first frame header (SOF0/SOF2) found while walking
+ * the markers.
  */
-function measureImage(bytes: Buffer, name: string): { width: number; height: number } | null {
-  const pngMagic =
+function measureShot(bytes: Buffer, name: string): { width: number; height: number } | null {
+  const isPng =
     bytes.length >= 24 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
-  if (pngMagic) return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
-  const jpegMagic = bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-  if (!jpegMagic) return null;
+  if (isPng) return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+  const isJpeg = bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (!isJpeg) return null;
   let p = 2;
   while (p + 9 < bytes.length) {
     if (bytes[p] !== 0xff) return null;
@@ -75,8 +76,48 @@ function measureImage(bytes: Buffer, name: string): { width: number; height: num
   return null;
 }
 
+/**
+ * Refuse a screenshot the gate would refuse here, not at scoring: the
+ * byte cap, and the size from the image header itself (long side at
+ * most 1440, short side at least 800).
+ */
+function vetShots(names: string[]): void {
+  for (const name of names) {
+    if (!SHOT_NAME.test(name)) {
+      process.stderr.write(
+        `token radar: screenshots/${name}: a name is letters, digits and . _ -, 1 to 128 characters\n`,
+      );
+      process.exit(1);
+    }
+    if (!/\.(png|jpg|jpeg)$/i.test(name)) {
+      process.stderr.write(`token radar: screenshots/${name} is not a PNG or JPEG\n`);
+      process.exit(1);
+    }
+    const image = readFileSync(join(outputDir, 'screenshots', name));
+    if (image.length > SHOT_CAPS.max_bytes) {
+      process.stderr.write(
+        `token radar: screenshots/${name} is ${image.length} bytes, over the ${SHOT_CAPS.max_bytes} the gate allows\n`,
+      );
+      process.exit(1);
+    }
+    const size = measureShot(image, name);
+    if (size === null) {
+      process.stderr.write(`token radar: screenshots/${name}: could not read its dimensions\n`);
+      process.exit(1);
+    }
+    const longSide = Math.max(size.width, size.height);
+    const shortSide = Math.min(size.width, size.height);
+    if (longSide > 1440 || shortSide < 800) {
+      process.stderr.write(
+        `token radar: screenshots/${name} is ${size.width}x${size.height}: the long side must be at most 1440 and the short side at least 800\n`,
+      );
+      process.exit(1);
+    }
+  }
+}
+
 /** Copy a directory's plain files into `to`, skipping dot-names and `skip`. Returns the names copied. */
-function copyDir(from: string, to: string, skip: string[] = []): string[] {
+function mirrorDir(from: string, to: string, skip: string[] = []): string[] {
   if (!existsSync(from)) return [];
   mkdirSync(to, { recursive: true });
   const names: string[] = [];
@@ -112,51 +153,17 @@ writeFileSync(join(outputDir, 'data.js'), dataScript(radar));
 // METHOD.md is written fresh here, from the snapshot and the board just
 // scored, so it can never go stale. It stays out of the copy above for
 // the reason the header gives.
-const dashFiles = copyDir(join(repoDir, 'dashboard'), join(outputDir, 'dashboard'), ['METHOD.md']);
+const dashFiles = mirrorDir(join(repoDir, 'dashboard'), join(outputDir, 'dashboard'), ['METHOD.md']);
 writeFileSync(join(outputDir, 'dashboard', 'METHOD.md'), methodDocument(snapshot, radar, board));
 
-const shots = copyDir(join(repoDir, 'screenshots'), join(outputDir, 'screenshots'));
+const shots = mirrorDir(join(repoDir, 'screenshots'), join(outputDir, 'screenshots'));
 if (shots.length < 3) {
   process.stderr.write(
     `token radar: screenshots/ holds ${shots.length} image${shots.length === 1 ? '' : 's'}: hand in 3, the board, a detail view and a filtered view\n`,
   );
   process.exit(1);
 }
-for (const name of shots) {
-  if (!SHOT_NAME.test(name)) {
-    process.stderr.write(
-      `token radar: screenshots/${name}: a name is letters, digits and . _ -, 1 to 128 characters\n`,
-    );
-    process.exit(1);
-  }
-  if (!/\.(png|jpg|jpeg)$/i.test(name)) {
-    process.stderr.write(`token radar: screenshots/${name} is not a PNG or JPEG\n`);
-    process.exit(1);
-  }
-  // Refuse a screenshot the gate would refuse here, not at scoring: the
-  // byte cap, and the size from the image header itself (long side at
-  // most 1440, short side at least 800).
-  const image = readFileSync(join(outputDir, 'screenshots', name));
-  if (image.length > SHOT_CAPS.max_bytes) {
-    process.stderr.write(
-      `token radar: screenshots/${name} is ${image.length} bytes, over the ${SHOT_CAPS.max_bytes} the gate allows\n`,
-    );
-    process.exit(1);
-  }
-  const size = measureImage(image, name);
-  if (size === null) {
-    process.stderr.write(`token radar: screenshots/${name}: could not read its dimensions\n`);
-    process.exit(1);
-  }
-  const longSide = Math.max(size.width, size.height);
-  const shortSide = Math.min(size.width, size.height);
-  if (longSide > 1440 || shortSide < 800) {
-    process.stderr.write(
-      `token radar: screenshots/${name} is ${size.width}x${size.height}: the long side must be at most 1440 and the short side at least 800\n`,
-    );
-    process.exit(1);
-  }
-}
+vetShots(shots);
 
 // The dossier is last: the scorer rebuilds it from this /output and
 // compares bytes, so what lands here must be exactly what the library

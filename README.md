@@ -1,12 +1,13 @@
-# Token Radar v5
+# Token Radar v7
 
 [![bounty](https://make.fun/badge/token-radar-01.svg)](https://make.fun/bounty/token-radar-01)
 [![rank](https://make.fun/badge/token-radar-01/hermansto/token-radar-v3/rank.svg)](https://make.fun/bounty/token-radar-01/leaderboard)
 [![reward](https://make.fun/badge/token-radar-01/hermansto/token-radar-v3/reward.svg)](https://make.fun/bounty/token-radar-01)
 
 A radar for pre-token protocols: every protocol in the snapshot that records
-no token yet, ranked by expected value — the implied value times the chance
-it ever launches a token. The 40-protocol watchlist is covered in full, plus
+no token yet, ranked by implied value — the value times the chance
+it ever launches a token is shown as expected value and drives the farm
+verdicts, not the rank order. The 40-protocol watchlist is covered in full, plus
 the strongest pre-token protocols the watchlist does not already hold —
 whatever their TVL, including above-floor protocols the house rule missed —
 for a 196-row board. Protocols whose token already trades are shown apart, at the
@@ -25,11 +26,13 @@ Implied value = TVL × category multiple × growth × breadth × scale.
   derivation — every category's multiple, raw median, samples and source,
   plus the fallback justifications — is in `dashboard/METHOD.md`, generated
   from the board by `main.ts` on every run.
-- **Growth** — 7-day change clamped to ±40%, weight 0.6.
+- **Growth** — 7-day change clamped to ±40%, weight −0.6. The fitted
+  coefficient is negative in 7 of 7 held-out fits: a 7-day pump depresses
+  mcap / TVL, so the term is mean-reversion, not momentum.
 - **Breadth** — 1 + min(chains, 12) × 0.015.
-- **Scale** — fitted, not a step: exp(−0.36 × clamp(log(TVL / $50M), −2, 4)).
-  The multiple falls as TVL rises, so value grows like TVL^0.64. The
-  coefficient is −0.36 on the full sample and negative in all seven
+- **Scale** — fitted, not a step: exp(−0.45 × clamp(log(TVL / $50M), −2, 4)).
+  The multiple falls as TVL rises, so value grows like TVL^0.55. The
+  coefficient is −0.45 on the full sample and negative in all seven
   held-out fits.
 - **Maturity: flat.** Age carries no weight in the multiple — the fitted
   age coefficient is negative in 6 of 7 held-out fits. Age acts through
@@ -42,10 +45,11 @@ Implied value = TVL × category multiple × growth × breadth × scale.
 
 The terms were fitted and tested held-out on seven splits (one
 walk-forward by listing date, one random 80/20, five cross-validation
-folds): the v5 model beats the v4 hand-picked model on both error
-(RMSE log 2.39 → 2.23) and ranking (Spearman 0.07 → 0.34). The full
-fitted OLS is not shipped — it is unstable and loses to the minimal
-change on every split. See `dashboard/METHOD.md` for the full fit report.
+folds): the v7 model beats the v6 model on both error
+(RMSE log 2.21 → 2.19) and ranking (Spearman 0.33 → 0.36), mean of the
+same seven splits. The full fitted OLS is not shipped — it is unstable
+and loses to the minimal change on every split. See
+`dashboard/METHOD.md` for the full fit report.
 
 No protocol name is ever special-cased. Every row carries a 5-step farm
 plan with a dollar cost and a time for each step, derived from the
