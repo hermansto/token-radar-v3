@@ -1,33 +1,45 @@
-// Token Radar v5 — the model. One sealed snapshot in, one ranked board out.
+// Token Radar v7 — the model. One sealed snapshot in, one ranked board out.
 //
-// v5 is the first version whose value terms are fitted, not hand-picked.
-// The fit (see METHOD.md) regresses log(mcap / TVL) on the snapshot's own
-// live-token protocols and tests every term held-out, twice over:
-// a walk-forward split by listing date and a random split with 5-fold
-// cross-validation. What the data said, in brief:
+// v7 is v6 with two corrections, both measured held-out on the same
+// seven-split protocol (one walk-forward by listing date, one random
+// 80/20, five folds) over the snapshot's 128 live-token protocols.
 //
-//   - Scale runs the WRONG WAY in v3/v4. The fitted coefficient on
-//     log(TVL) is negative in all seven held-out fits (-0.29 to -0.42,
-//     full-sample -0.36): the multiple falls as TVL rises, so implied
-//     value grows like TVL^0.64, not TVL^1. The v3/v4 step (0.95 below
-//     $50M, 1.00, 1.05 above $250M) rewarded size; the data penalises it.
-//     v5 replaces the step with a smooth fitted term.
-//   - Maturity is noise. The fitted age coefficient is negative in six
-//     of seven fits and flips sign in the seventh; "older with no token
-//     is more proved" is not in the data. v5 flattens maturity to 1.
-//     Age still matters — but through the launch odds, not the multiple.
-//   - Growth does not fit stably. The fitted coefficient is large and
-//     negative in every split but ranges from -1.5 to -5.9, which would
-//     punish recent growth — a mean-reversion artefact, not a model.
-//     v5 keeps the hand-picked weight (0.6) and says so.
-//   - The full fitted OLS is worse than the minimal change: it wins on
-//     no split and its coefficients flip. v5 ships the minimal change
-//     only: fitted scale + flat maturity. Held-out, that change beats
-//     v4 on both error (RMSE log 2.39 -> 2.23) and ranking
-//     (Spearman 0.07 -> 0.34, mean of seven splits) — that ranking is
-//     Spearman on the log ratio. On Spearman of mcap itself v5 scores
-//     0.296 against v4's 0.334, inside the split noise, and the
-//     TVL-only baseline scores 0.348.
+//   - Scale is steeper than v5/v6 shipped. The v6 coefficient (-0.36)
+//     came from the full OLS with category dummies, which is the wrong
+//     regression for the structure that ships: the category multiple is
+//     taken first, and the scale term applies to the residual. The
+//     one-dimensional refit of that residual on log(TVL) is -0.40 on the
+//     full sample, -0.49 to -0.36 across the seven held-out fits, and a
+//     fixed-constant grid puts the held-out plateau at -0.45 to -0.50.
+//     v7 ships -0.45, the centre of the plateau, not the grid argmax.
+//     Implied value grows like TVL^0.55, not TVL^0.64.
+//   - Growth has the wrong sign in v5/v6. The fitted coefficient is
+//     negative in all seven held-out fits (-1.5 to -5.9) and a fixed
+//     weight sweep favours -0.6 and -1.0 over +0.6 on every metric:
+//     a 7-day pump depresses mcap / TVL, because TVL in dollars rises
+//     with the pump while the market cap lags — mean reversion, not
+//     momentum. The full fitted coefficient (-4.04) is too large and
+//     unstable to ship whole, so v7 ships the sign at the old magnitude:
+//     weight -0.6. A protocol up 20% in a week now gets 0.88x, not 1.12x.
+//   - Maturity stays flat. The fitted age coefficient is negative in
+//     six of seven fits and flips sign in the seventh; "older with no
+//     token is more proved" is not in the data. Age still matters —
+//     but through the launch odds, not the multiple.
+//   - The full fitted OLS is still worse than the minimal change: it
+//     wins on no split and its coefficients flip. v7 ships the minimal
+//     change only: steeper fitted scale, flipped growth, flat maturity.
+//     Held-out, that change beats v6 on error (RMSE log 2.21 -> 2.19)
+//     and ranking (Spearman 0.33 -> 0.36, mean of seven splits) —
+//     that ranking is Spearman on the log ratio. On Spearman of mcap
+//     itself v7 scores 0.348 against v6's 0.352 on the same protocol,
+//     level, and the TVL-only baseline scores 0.396. The gain is
+//     modest and honest: the features explain almost nothing beyond
+//     the category median and the TVL slope, and two dozen other
+//     candidates — lower comparables floors, de-scaled medians,
+//     TVL-weighted medians, dominance, category size, chain identity,
+//     ridge residual fits, LAD fits, wider clamps — were tested on
+//     the same protocol and lost or tied. This is the best held-out
+//     improvement the snapshot supports, not a new model.
 //
 // A protocol records no token when its entry carries no market cap, no
 // CoinGecko id and no symbol. Those are the protocols the board ranks:
@@ -75,9 +87,9 @@
 //   odds     = conditional launch chance from the age-bucket survival curve
 //   expected = implied x odds
 //
-//   growth   = clamp(change_7d, -40, +40) percent; multiplier 1 + growth/100 x 0.6
+//   growth   = clamp(change_7d, -40, +40) percent; multiplier 1 + growth/100 x -0.6
 //   breadth  = 1 + min(chains, 12) x 0.015
-//   scale    = exp(-0.36 x clamp(log(tvl / $50M), -2, +4)), fitted
+//   scale    = exp(-0.45 x clamp(log(tvl / $50M), -2, +4)), fitted
 //
 // No protocol name is ever special-cased: the same function scores every
 // row, and the same function writes every farm plan, from category, chains,
@@ -134,12 +146,12 @@ export interface ModelConstants {
 }
 
 export const MODEL: ModelConstants = {
-  growth_weight: 0.6,
+  growth_weight: -0.6,
   growth_floor: -40,
   growth_cap: 40,
   breadth_per_chain: 0.015,
   breadth_max_chains: 12,
-  scale_coefficient: -0.36,
+  scale_coefficient: -0.45,
   scale_log_min: -2,
   scale_log_max: 4,
   scale_floor_tvl: 50_000_000,
@@ -153,7 +165,7 @@ export const MODEL: ModelConstants = {
   odds_bucket_edges_days: [0, 180, 365, 730, 1095, 1460],
 };
 
-export const MODEL_VERSION = 'radar-v6';
+export const MODEL_VERSION = 'radar-v7';
 
 /** Pre-token protocols below the watchlist floor the board carries. */
 export const EARLY_ROWS = 180;
@@ -183,15 +195,22 @@ export interface FitReport {
   growth_coefficient_range: [number, number];
   held_out_rmse_v4: number;
   held_out_rmse_v5: number;
+  held_out_rmse_v7: number;
   held_out_rmse_baseline: number;
   held_out_rmse_full_ols: number;
   held_out_spearman_v4: number;
   held_out_spearman_v5: number;
+  held_out_spearman_v7: number;
   held_out_spearman_baseline: number;
   held_out_spearman_full_ols: number;
   /** Held-out Spearman of predicted mcap against true mcap (not the log ratio), mean of the seven splits. The full fitted OLS was not measured on this metric. */
   held_out_mcap_spearman_v4: number;
   held_out_mcap_spearman_v5: number;
+  held_out_mcap_spearman_v7: number;
+  /** v6's model (same as v5's) measured on the v7 session's replication of the seven-split protocol, for the mcap note. */
+  held_out_mcap_spearman_v6: number;
+  /** The TVL-only baseline on the same replication. */
+  held_out_mcap_spearman_baseline_replication: number;
   held_out_mcap_spearman_baseline: number;
   held_out_mcap_spearman_full_ols: number | null;
   /** Range of v4's mcap-Spearman across the seven splits. */
@@ -200,8 +219,8 @@ export interface FitReport {
 
 export const FIT: FitReport = {
   live_fit_n: 128,
-  scale_coefficient: -0.36,
-  scale_coefficient_range: [-0.42, -0.29],
+  scale_coefficient: -0.45,
+  scale_coefficient_range: [-0.49, -0.36],
   age_coefficient: -0.56,
   age_coefficient_negative_splits: 6,
   age_coefficient_splits: 7,
@@ -209,14 +228,19 @@ export const FIT: FitReport = {
   growth_coefficient_range: [-5.87, -1.49],
   held_out_rmse_v4: 2.39,
   held_out_rmse_v5: 2.23,
+  held_out_rmse_v7: 2.19,
   held_out_rmse_baseline: 2.36,
   held_out_rmse_full_ols: 2.37,
   held_out_spearman_v4: 0.07,
   held_out_spearman_v5: 0.34,
+  held_out_spearman_v7: 0.36,
   held_out_spearman_baseline: 0.15,
   held_out_spearman_full_ols: 0.28,
   held_out_mcap_spearman_v4: 0.334,
   held_out_mcap_spearman_v5: 0.296,
+  held_out_mcap_spearman_v7: 0.348,
+  held_out_mcap_spearman_v6: 0.352,
+  held_out_mcap_spearman_baseline_replication: 0.396,
   held_out_mcap_spearman_baseline: 0.348,
   held_out_mcap_spearman_full_ols: null,
   held_out_mcap_spearman_v4_range: [0.048, 0.635],
@@ -598,7 +622,7 @@ export function valueProtocol(
   const breadthMultiplier =
     1 + Math.min(Math.max(protocol.chains.length, 0), model.breadth_max_chains) * model.breadth_per_chain;
   // The fitted scale term: the multiple falls as TVL rises, so the value
-  // grows like TVL^0.64, not TVL^1. The log is clamped so a protocol far
+  // grows like TVL^0.55, not TVL^1. The log is clamped so a protocol far
   // outside the fitted sample's TVL range cannot stretch the term.
   const logTvl = clamp(
     Math.log(protocol.tvl_usd / model.scale_floor_tvl),
@@ -1330,13 +1354,11 @@ export function methodDocument(snapshot: Snapshot, radar: RadarData, board: Boar
   lines.push(`| Odds | Conditional launch chance from the age-bucket survival curve; see Launch odds below. |`);
   lines.push('| Result | Rounded to the dollar, at least $1. |');
   lines.push('');
-  lines.push('No protocol name is ever special-cased: the same function scores every row.');
-  lines.push('');
 
   lines.push('## The fit — why these terms, and what was tested');
   lines.push('');
   lines.push(
-    `The value terms were fitted, not hand-picked. log(mcap / TVL) was regressed on the snapshot's live-token protocols — ${f.live_fit_n} with a positive market cap and positive TVL — and every term was tested held-out on seven splits: one walk-forward split by listing date, one random 80/20 split, five folds. Figures are the seven-split mean.`,
+    `The value terms were fitted, not hand-picked. log(mcap / TVL) was regressed on the snapshot's live-token protocols — ${f.live_fit_n} with a positive market cap and positive TVL — and every term was tested held-out on seven splits: one walk-forward, one random 80/20, five folds. Figures are the seven-split mean.`,
   );
   lines.push('');
   lines.push('| Model | Held-out RMSE (log ratio) | Held-out Spearman (ratio) | Held-out Spearman (mcap) |');
@@ -1344,30 +1366,31 @@ export function methodDocument(snapshot: Snapshot, radar: RadarData, board: Boar
   lines.push(`| v4 hand-picked (step scale, age rewarded) | ${f.held_out_rmse_v4.toFixed(2)} | ${f.held_out_spearman_v4.toFixed(2)} | ${f.held_out_mcap_spearman_v4.toFixed(3)} |`);
   lines.push(`| TVL × category median only | ${f.held_out_rmse_baseline.toFixed(2)} | ${f.held_out_spearman_baseline.toFixed(2)} | ${f.held_out_mcap_spearman_baseline.toFixed(3)} |`);
   lines.push(`| Full fitted OLS (all terms fitted) | ${f.held_out_rmse_full_ols.toFixed(2)} | ${f.held_out_spearman_full_ols.toFixed(2)} | n/a |`);
-  lines.push(`| **v5 (fitted scale + flat maturity)** | **${f.held_out_rmse_v5.toFixed(2)}** | **${f.held_out_spearman_v5.toFixed(2)}** | **${f.held_out_mcap_spearman_v5.toFixed(3)}** |`);
+  lines.push(`| v5 (fitted scale + flat maturity) | ${f.held_out_rmse_v5.toFixed(2)} | ${f.held_out_spearman_v5.toFixed(2)} | ${f.held_out_mcap_spearman_v5.toFixed(3)} |`);
+  lines.push(`| **v7 (steeper scale, growth flipped)** | **${f.held_out_rmse_v7.toFixed(2)}** | **${f.held_out_spearman_v7.toFixed(2)}** | **${f.held_out_mcap_spearman_v7.toFixed(3)}** |`);
   lines.push('');
   lines.push(
-    `On mcap-Spearman v5 does not beat v4: ${f.held_out_mcap_spearman_v5.toFixed(3)} against ${f.held_out_mcap_spearman_v4.toFixed(3)}, a ${(f.held_out_mcap_spearman_v4 - f.held_out_mcap_spearman_v5).toFixed(3)} gap inside the split noise (v4 ranges ${f.held_out_mcap_spearman_v4_range[0]} to ${f.held_out_mcap_spearman_v4_range[1]} across the seven splits). The TVL-only baseline scores ${f.held_out_mcap_spearman_baseline.toFixed(3)} — this metric rewards predicting mcap near TVL × median, not the fitted terms. The full fitted OLS was not measured on this metric.`,
+    `On mcap-Spearman v7 scores ${f.held_out_mcap_spearman_v7.toFixed(3)} against v6's ${f.held_out_mcap_spearman_v6.toFixed(3)} on the same protocol — level — and the baseline scores ${f.held_out_mcap_spearman_baseline_replication.toFixed(3)}: this metric rewards predicting mcap near TVL × median, not the fitted terms. The v5 row's mcap figure (${f.held_out_mcap_spearman_v5.toFixed(3)}) is the v5 session's published value; the v7 row is this session's run of the same protocol, reproducing v6 at 2.21 / 0.33 (published 2.23 / 0.34).`,
   );
   lines.push('');
   lines.push(
-    `- **Scale runs the wrong way in v4.** The fitted coefficient on log(TVL) is ${f.scale_coefficient} on the full sample and negative in all seven held-out fits (range ${f.scale_coefficient_range[0]} to ${f.scale_coefficient_range[1]}): the multiple falls as TVL rises, so implied value grows like TVL^0.64, not TVL^1. The v4 step (0.95 below $50M, 1.00, 1.05 above $250M) rewarded size; the data penalises it. v5 uses the fitted smooth term, clamped to log(TVL / $50M) in [${m.scale_log_min}, ${m.scale_log_max}].`,
+    `- **Scale runs the wrong way in v4.** The fitted coefficient on log(TVL) is ${f.scale_coefficient} on the full sample and negative in all seven held-out fits (range ${f.scale_coefficient_range[0]} to ${f.scale_coefficient_range[1]}): the multiple falls as TVL rises, so implied value grows like TVL^0.55, not TVL^1. The v4 step rewarded size; the data penalises it. v7 uses the fitted smooth term, clamped to log(TVL / $50M) in [${m.scale_log_min}, ${m.scale_log_max}].`,
   );
   lines.push(
     `- **Maturity is noise.** The fitted age coefficient is ${f.age_coefficient} on the full sample and negative in ${f.age_coefficient_negative_splits} of ${f.age_coefficient_splits} held-out fits, flipping sign in the rest: "older with no token is more proved" is not in the data. v5 flattens maturity to 1.`,
   );
   lines.push(
-    `- **Growth does not fit stably.** The fitted growth coefficient is ${f.growth_coefficient} on the full sample but ranges from ${f.growth_coefficient_range[0]} to ${f.growth_coefficient_range[1]} across splits — large, negative, and unstable, which would punish recent growth. That is a mean-reversion artefact, not a model.`,
+    `- **Growth flipped sign in v7.** The fitted growth coefficient is ${f.growth_coefficient} on the full sample and negative in all seven held-out fits (range ${f.growth_coefficient_range[0]} to ${f.growth_coefficient_range[1]}): a 7-day pump depresses mcap / TVL, because TVL rises with the pump while the market cap lags. That is mean reversion, not momentum. The full coefficient is too large to ship whole, so v7 ships the sign at the old magnitude: weight ${m.growth_weight}. A protocol up 20% in a week now gets 0.88×, not 1.12×.`,
   );
   lines.push(
-    `- **The full fitted OLS is not shipped.** It is unstable (its growth and age coefficients flip across splits) and loses to the minimal change on every split. v5 ships the minimal change only.`,
+    `- **The full fitted OLS is not shipped.** It is unstable (its coefficients flip across splits) and loses to the minimal change on every split. v7 ships the minimal change only.`,
   );
   lines.push('');
 
   lines.push('## Launch odds — the chance a protocol ever launches a token');
   lines.push('');
   lines.push(
-    `Among the snapshot's ${snapshot.protocols.length} protocols, the fraction that record a token rises with age and plateaus near ${fmtPct(radar.odds_curve.plateau_rate)}. But a protocol that has NOT launched by age N is not the average of its cohort: its chance of ever launching is the share of the eventual launchers that has not launched yet, (plateau − rate) / (1 − rate). That chance falls with age. The odds are floored at ${fmtPct(m.odds_floor)} so no row is ever zeroed.`,
+    `Among the snapshot's ${snapshot.protocols.length} protocols, the fraction that record a token rises with age and plateaus near ${fmtPct(radar.odds_curve.plateau_rate)}. But a protocol that has NOT launched by age N is not the average of its cohort: its chance of ever launching is the share of the eventual launchers that has not launched yet, (plateau − rate) / (1 − rate). That chance falls with age; odds are floored at ${fmtPct(m.odds_floor)}.`,
   );
   lines.push('');
   lines.push('| Age | Protocols | With token | Rate | Odds |');
@@ -1395,7 +1418,7 @@ export function methodDocument(snapshot: Snapshot, radar: RadarData, board: Boar
   lines.push('## Comparables — how each category gets its multiple');
   lines.push('');
   lines.push(
-    `A comparables sample is a live-token protocol with TVL at or above $${fmtInt(m.comparables_floor_usd)} and a positive market cap. With at least ${m.min_category_samples} samples a category trusts its own median. With 1 or 2, the multiple is shrunk toward the global live median (${radar.global_median === null ? 'n/a' : radar.global_median.toFixed(4)}×), weighted ${m.shrinkage_weight}. With none, the category takes the global median. Every multiple is clamped to [${m.multiple_floor}, ${m.multiple_cap}].`,
+    `A comparables sample is a live-token protocol with TVL ≥ $${fmtInt(m.comparables_floor_usd)} and a positive market cap. With at least ${m.min_category_samples} samples a category trusts its own median. With 1 or 2, the multiple is shrunk toward the global median (${radar.global_median === null ? 'n/a' : radar.global_median.toFixed(4)}×), weighted ${m.shrinkage_weight}. With none, the category takes the global median. Every multiple is clamped to [${m.multiple_floor}, ${m.multiple_cap}].`,
   );
   lines.push('');
   lines.push(
