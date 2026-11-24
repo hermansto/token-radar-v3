@@ -157,7 +157,7 @@
         el('h1', { text: 'Pre-token protocols, ranked by implied value' }),
         el('p', { html: 'Every protocol on this board <strong>records no token yet</strong>. Ranks follow implied value. ' +
           'Expected value is the implied value times the chance it ever launches a token. Implied value comes from the snapshot itself: TVL times a category multiple from ' +
-          'live-token comparables, adjusted for 7-day growth, chain breadth and a fitted scale term. ' +
+          'live-token comparables, adjusted for growth, breadth and a fitted scale term. ' +
           'The launch odds come from the peers\u2019 own record. Click any row for the full maths and its farm plan.' })),
       el('div', { class: 'facts' },
         el('div', { class: 'fact' }, el('span', { text: 'Board' }), el('b', { text: DATA.board_size + ' protocols' })),
@@ -320,11 +320,11 @@
       ['TVL', fmtFull(r.tvl_usd), 'Snapshot TVL'],
       ['× category multiple (' + (r.category || 'Uncategorised') + ')', '× ' + r.category_multiple.toFixed(4), multNote],
       ['= base value', fmtFull(Math.round(base)), 'TVL × multiple'],
-      ['× growth (' + (growth > 0 ? '+' : '') + growth + '% 7d, clamped ±40%)', '× ' + fmtMult(growthMult), '1 + growth / 100 × 0.6'],
+      ['× growth (' + (growth > 0 ? '+' : '') + growth + '% 7d, clamped ±40%)', '× ' + fmtMult(growthMult), '1 + growth / 100 × ' + m.growth_weight],
       ['= after growth', fmtFull(Math.round(afterGrowth)), ''],
       ['× breadth (' + (r.chains || []).length + ' chain' + ((r.chains || []).length === 1 ? '' : 's') + ')', '× ' + fmtMult(breadthMult), '1 + min(chains, 12) × 0.015'],
       ['= after breadth', fmtFull(Math.round(afterBreadth)), ''],
-      ['× scale (TVL ' + fmtUsd(r.tvl_usd) + ')', '× ' + fmtMult(scaleMult), 'exp(−0.36 × clamp(log(TVL/$50M), −2, 4)) — fitted'],
+      ['× scale (TVL ' + fmtUsd(r.tvl_usd) + ')', '× ' + fmtMult(scaleMult), 'exp(' + m.scale_coefficient + ' × clamp(log(TVL/$50M), ' + m.scale_log_min + ', ' + m.scale_log_max + ')) — fitted'],
       ['= implied value', fmtFull(r.implied_value_usd), 'Rounded to the dollar, at least $1'],
       ['× launch odds (' + fmtAge(r.age_days) + ' with no token)', '× ' + fmtOdds(r.odds), 'Conditional chance from the age-bucket survival curve'],
       ['= expected value', fmtFull(r.expected_value_usd), 'Implied × odds'],
@@ -392,18 +392,18 @@
     shell.appendChild(el('div', { class: 'section' },
       el('h2', { text: 'The model — fitted, not hand-picked' }),
       el('p', { html: 'Expected value = <strong>implied value × launch odds</strong>. Implied value = <strong>TVL × category multiple × growth × breadth × scale</strong>. ' +
-        'The category multiple is the median market-cap / TVL of that category\u2019s live-token protocols at $50M+ TVL with a positive market cap — 3 samples to trust its own median, 1 or 2 shrunk toward the global live median (' +
-        (DATA.global_median === null ? 'n/a' : DATA.global_median.toFixed(4)) + '), none takes the global median outright. ' +
-        'The launch odds are the conditional chance a protocol ever launches a token, from the age-bucket survival curve below. ' +
+        'The category multiple is the median market-cap / TVL of that category\u2019s live-token protocols at $50M+ TVL with a positive market cap — 3 samples to trust its own median, fewer shrunk toward the global median (' +
+        (DATA.global_median === null ? 'n/a' : DATA.global_median.toFixed(4)) + '). ' +
+        'The launch odds are the conditional chance a protocol ever launches, from the age-bucket curve below. ' +
         'No protocol name is ever special-cased.' })));
     var grid = el('div', { class: 'model-grid' });
     [
-      ['Growth', '7-day change clamped to ±40%, weight 0.6. Kept hand-picked: the fitted coefficient is unstable across splits.'],
-      ['Maturity: flat', 'Age carries no weight in the multiple — the fitted age coefficient is negative in 6 of 7 held-out fits. Age acts through the launch odds.'],
+      ['Growth', '7-day change clamped to ±40%, weight −0.6. Fitted coefficient negative in 7 of 7 held-out fits — a 7-day pump depresses mcap / TVL, so the term is mean-reversion, not momentum.'],
+      ['Maturity: flat', 'Age carries no weight in the multiple — the fitted age coefficient is negative in 6 of 7 fits. Age acts through the launch odds.'],
       ['Breadth', '1 + min(chains, 12) × 0.015.'],
-      ['Scale: fitted', 'exp(−0.36 × clamp(log(TVL / $50M), −2, 4)). The multiple falls as TVL rises; value grows like TVL^0.64.'],
+      ['Scale: fitted', 'exp(−0.45 × clamp(log(TVL / $50M), −2, 4)). Value grows like TVL^0.55.'],
       ['Multiple clamp', 'Every category multiple is clamped to [0.05, 3].'],
-      ['Fallback', '1 or 2 samples → shrunk blend toward the global median (weight 3); no samples → global median; none at all → 0.25. A $0 market cap is a missing price, not a valuation, so those protocols are excluded.'],
+      ['Fallback', '1 or 2 samples → shrunk blend toward the global median (weight 3); no samples → global median; none at all → 0.25. A $0 market cap is a missing price, so those protocols are excluded.'],
     ].forEach(function (c) {
       grid.appendChild(el('div', { class: 'model-card' }, el('b', { text: c[0] }), el('span', { text: c[1] })));
     });
@@ -412,7 +412,7 @@
     // The fit, held out.
     shell.appendChild(el('div', { class: 'section' },
       el('h2', { text: 'The fit — tested held-out, twice over' }),
-      el('p', { text: 'log(mcap / TVL) was regressed on the snapshot\u2019s ' + f.live_fit_n + ' live protocols with a positive market cap, and every term was tested held-out on seven splits: one walk-forward by listing date, one random 80/20, and five folds. Figures are the seven-split mean. The full fitted OLS is not shipped — unstable, and it loses on every split.' })));
+      el('p', { text: 'log(mcap / TVL) was regressed on the snapshot\u2019s ' + f.live_fit_n + ' live protocols with a positive market cap, and every term was tested held-out on seven splits: one walk-forward, one random 80/20, and five folds. Figures are the seven-split mean. The full fitted OLS is not shipped — it loses on every split.' })));
     var fitPanel = el('div', { class: 'panel' });
     var fitWrap = el('div', { class: 'table-wrap' });
     var fitTable = el('table', {});
@@ -422,7 +422,8 @@
     [['v4 hand-picked (step scale, age rewarded)', f.held_out_rmse_v4, f.held_out_spearman_v4],
      ['TVL × category median only', f.held_out_rmse_baseline, f.held_out_spearman_baseline],
      ['Full fitted OLS (all terms fitted)', f.held_out_rmse_full_ols, f.held_out_spearman_full_ols],
-     ['v5 — fitted scale + flat maturity', f.held_out_rmse_v5, f.held_out_spearman_v5]].forEach(function (row) {
+     ['v5 — fitted scale + flat maturity', f.held_out_rmse_v5, f.held_out_spearman_v5],
+     ['v7 — steeper scale, growth flipped', f.held_out_rmse_v7, f.held_out_spearman_v7]].forEach(function (row) {
       fitBody.appendChild(el('tr', {},
         el('td', { text: row[0] }),
         el('td', { class: 'num', text: row[1].toFixed(2) }),
@@ -436,7 +437,7 @@
     // The launch odds.
     shell.appendChild(el('div', { class: 'section' },
       el('h2', { text: 'Launch odds — the chance a protocol ever launches a token' }),
-      el('p', { text: 'The fraction of protocols that record a token rises with age and plateaus near ' + (curve.plateau_rate * 100).toFixed(1) + '%. A protocol that has not launched by age N is not the average of its cohort: its odds are the share of the eventual launchers that has not launched yet, (plateau − rate) / (1 − rate). That chance falls with age — young protocols keep most of their chance, a protocol listed three years ago with no token has almost used up its window. Odds are floored at 5%.' })));
+      el('p', { text: 'The fraction of protocols that record a token rises with age and plateaus near ' + (curve.plateau_rate * 100).toFixed(1) + '%. A protocol that has not launched by age N is not the average of its cohort: its odds are the share of the eventual launchers that has not launched yet, (plateau − rate) / (1 − rate). That chance falls with age — young protocols keep most of their chance. Odds are floored at 5%.' })));
     var oddsPanel = el('div', { class: 'panel' });
     var oddsWrap = el('div', { class: 'table-wrap' });
     var oddsTable = el('table', {});
